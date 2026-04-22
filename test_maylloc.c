@@ -191,6 +191,79 @@ static void test_stress(void)
     printf("PASS: test_stress\n");
 }
 
+static void test_dynamic_array_basic(void)
+{
+    maylloc_id_t arena = mayllocInit(64 * 1024);
+
+    ArrayListint al = $initArrayList(arena, int);
+    assert(al.items != NULL && al.len == 0 && al.cap == 4);
+
+    for (int i = 0; i < 8; i++)
+        $append(arena, &al, i * 10);
+
+    assert(al.len == 8);
+    for (int i = 0; i < 8; i++)
+        assert(al.items[i] == i * 10);
+
+    mayllocDrop(arena);
+    printf("PASS: test_dynamic_array_basic\n");
+}
+
+static void test_dynamic_array_growth(void)
+{
+    maylloc_id_t arena = mayllocInit(1024 * 1024);
+
+    ArrayListint al = $initArrayList(arena, int);
+
+    /* Append enough to trigger multiple doublings (4 → 8 → 16 → ...). */
+    for (int i = 0; i < 1000; i++)
+        $append(arena, &al, i);
+
+    assert(al.len == 1000);
+    assert(al.cap >= 1000);
+    for (int i = 0; i < 1000; i++)
+        assert(al.items[i] == i);
+
+    mayllocDrop(arena);
+    printf("PASS: test_dynamic_array_growth\n");
+}
+
+static void test_dynamic_array_append_many(void)
+{
+    maylloc_id_t arena = mayllocInit(64 * 1024);
+
+    ArrayListint dst = $initArrayList(arena, int);
+    int buf[] = { 10, 20, 30, 40, 50 };
+    Arrayint src = { .items = buf, .len = 5 };
+
+    $appendMany(arena, &dst, src);
+
+    assert(dst.len == 5);
+    for (int i = 0; i < 5; i++)
+        assert(dst.items[i] == buf[i]);
+
+    mayllocDrop(arena);
+    printf("PASS: test_dynamic_array_append_many\n");
+}
+
+static void test_dynamic_array_reverse(void)
+{
+    maylloc_id_t arena = mayllocInit(64 * 1024);
+
+    ArrayListint al = $initArrayList(arena, int);
+    for (int i = 0; i < 5; i++)
+        $append(arena, &al, i + 1); /* 1 2 3 4 5 */
+
+    $reverseArrayList(arena, &al); /* 5 4 3 2 1 */
+
+    assert(al.len == 5);
+    for (int i = 0; i < 5; i++)
+        assert(al.items[i] == 5 - i);
+
+    mayllocDrop(arena);
+    printf("PASS: test_dynamic_array_reverse\n");
+}
+
 int main(void)
 {
     test_basic();
@@ -203,6 +276,10 @@ int main(void)
     test_once();
     test_zero_init();
     test_stress();
+    test_dynamic_array_basic();
+    test_dynamic_array_growth();
+    test_dynamic_array_append_many();
+    test_dynamic_array_reverse();
 
     printf("\nAll tests passed!\n");
     return 0;

@@ -3,130 +3,147 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
-static void test_basic_alloc_free(void)
+typedef struct { int x; int y; } Point;
+typedef struct { char buf[128]; } BigThing;
+
+static void test_basic(void)
 {
-    maylloc_init();
+    maylloc_id_t arena = mayllocInit(4096);
+    assert(arena != MAYLLOC_NULL_ID);
 
-    maylloc_id_t* id = maylloc_alloc(64);
-    assert(id != NULL);
+    Point* p = MAYLLOC(arena, Point, 1);
+    assert(p != NULL);
+    p->x = 10;
+    p->y = 20;
+    assert(p->x == 10 && p->y == 20);
 
-    void* ptr = maylloc_get(id);
-    assert(ptr != NULL);
-
-    memset(ptr, 0xAB, 64);
-
-    maylloc_free(id);
-    assert(maylloc_get(id) == NULL);
-
-    maylloc_deinit();
-    printf("PASS: test_basic_alloc_free\n");
+    mayllocDrop(arena);
+    printf("PASS: test_basic\n");
 }
 
-static void test_double_free(void)
+static void test_multiple_types(void)
 {
-    maylloc_init();
+    maylloc_id_t arena = mayllocInit(4096);
 
-    maylloc_id_t* id = maylloc_alloc(32);
-    assert(id != NULL);
+    int*    ints   = MAYLLOC(arena, int,      16);
+    Point*  points = MAYLLOC(arena, Point,    8);
+    char*   buf    = MAYLLOC(arena, char,     256);
 
-    maylloc_free(id);
-    maylloc_free(id);
+    assert(ints && points && buf);
 
-    maylloc_deinit();
-    printf("PASS: test_double_free\n");
+    /* pointers must not alias */
+    assert((void*)ints   != (void*)points);
+    assert((void*)points != (void*)buf);
+
+    for (int i = 0; i < 16; i++)  ints[i]    = i;
+    for (int i = 0; i < 8;  i++) { points[i].x = i; points[i].y = -i; }
+    memset(buf, 0xAB, 256);
+
+    for (int i = 0; i < 16; i++)  assert(ints[i]    == i);
+    for (int i = 0; i < 8;  i++) { assert(points[i].x == i && points[i].y == -i); }
+    for (int i = 0; i < 256; i++) assert((unsigned char)buf[i] == 0xAB);
+
+    mayllocDrop(arena);
+    printf("PASS: test_multiple_types\n");
+}
+
+static void test_reset_reuses_memory(void)
+{
+    maylloc_id_t arena = mayllocInit(4096);
+
+    int* first = MAYLLOC(arena, int, 4);
+    assert(first != NULL);
+
+    mayllocReset(arena);
+
+    int* second = MAYLLOC(arena, int, 4);
+    assert(second != NULL);
+
+    /* After reset the bump pointer is back at 0, so same address reused. */
+    assert(first == second);
+
+    mayllocDrop(arena);
+    printf("PASS: test_reset_reuses_memory\n");
 }
 
 static void test_null_id(void)
 {
-    maylloc_init();
-
-    assert(maylloc_get(NULL) == NULL);
-    maylloc_free(NULL);
-
-    maylloc_deinit();
+    assert(maylloc(MAYLLOC_NULL_ID, sizeof(int), 1) == NULL);
+    mayllocReset(MAYLLOC_NULL_ID);  /* must not crash */
+    mayllocDrop(MAYLLOC_NULL_ID);   /* must not crash */
     printf("PASS: test_null_id\n");
 }
 
-static void test_multiple_allocs(void)
+static void test_capacity_exhausted(void)
 {
-    maylloc_init();
+    /* Small arena — 64 bytes of data capacity. */
+    maylloc_id_t arena = mayllocInit(64);
+    assert(arena != MAYLLOC_NULL_ID);
 
-    maylloc_id_t* ids[100];
-    for (int i = 0; i < 100; i++) {
-        ids[i] = maylloc_alloc(64);
-        assert(ids[i] != NULL);
-    }
+    void* p = maylloc(arena, 1, 64);
+    assert(p != NULL);
 
-    for (int i = 0; i < 100; i++) {
-        void* pi = maylloc_get(ids[i]);
-        assert(pi != NULL);
-        for (int j = i + 1; j < 100; j++) {
-            assert(pi != maylloc_get(ids[j]));
-        }
-    }
+    /* One more byte must fail. */
+    void* overflow = maylloc(arena, 1, 1);
+    assert(overflow == NULL);
 
-    for (int i = 0; i < 100; i++)
-        maylloc_free(ids[i]);
-
-    maylloc_deinit();
-    printf("PASS: test_multiple_allocs\n");
+    mayllocDrop(arena);
+    printf("PASS: test_capacity_exhausted\n");
 }
 
-static void test_alloc_failure(void)
+static void test_overflow_protection(void)
 {
-    maylloc_init();
+    maylloc_id_t arena = mayllocInit(1024 * 1024);
 
-    maylloc_id_t* id = maylloc_alloc((size_t)-1);
-    assert(id == NULL);
+    /* elem_size * count overflows size_t. */
+    void* p = maylloc(arena, sizeof(uint64_t), (size_t)-1);
+    assert(p == NULL);
 
-    maylloc_deinit();
-    printf("PASS: test_alloc_failure\n");
+    mayllocDrop(arena);
+    printf("PASS: test_overflow_protection\n");
 }
 
-static void test_slot_reuse(void)
+static void test_large_hint(void)
 {
-    maylloc_init();
+    /* 256 MiB hint — OS commits pages lazily so this is cheap. */
+    maylloc_id_t arena = mayllocInit(256 * 1024 * 1024);
+    assert(arena != MAYLLOC_NULL_ID);
 
-    maylloc_id_t* id1 = maylloc_alloc(32);
-    assert(id1 != NULL);
-    maylloc_free(id1);
+    BigThing* arr = MAYLLOC(arena, BigThing, 1000);
+    assert(arr != NULL);
+    memset(arr, 0, sizeof(BigThing) * 1000);
 
-    maylloc_id_t* id2 = maylloc_alloc(32);
-    assert(id2 != NULL);
-    assert(id2 == id1);
-
-    maylloc_free(id2);
-    maylloc_deinit();
-    printf("PASS: test_slot_reuse\n");
+    mayllocDrop(arena);
+    printf("PASS: test_large_hint\n");
 }
 
 static void test_stress(void)
 {
-    maylloc_init();
+    maylloc_id_t arena = mayllocInit(1024 * 1024);
 
-    maylloc_id_t* ids[1000];
-    for (int i = 0; i < 1000; i++) {
-        ids[i] = maylloc_alloc(128);
-        assert(ids[i] != NULL);
-        memset(maylloc_get(ids[i]), i & 0xFF, 128);
+    for (int round = 0; round < 10; round++) {
+        int* nums = MAYLLOC(arena, int, 1000);
+        assert(nums != NULL);
+        for (int i = 0; i < 1000; i++) nums[i] = i * round;
+        for (int i = 0; i < 1000; i++) assert(nums[i] == i * round);
+        mayllocReset(arena);
     }
 
-    for (int i = 0; i < 1000; i++)
-        maylloc_free(ids[i]);
-
-    maylloc_deinit();
+    mayllocDrop(arena);
     printf("PASS: test_stress\n");
 }
 
 int main(void)
 {
-    test_basic_alloc_free();
-    test_double_free();
+    test_basic();
+    test_multiple_types();
+    test_reset_reuses_memory();
     test_null_id();
-    test_multiple_allocs();
-    test_alloc_failure();
-    test_slot_reuse();
+    test_capacity_exhausted();
+    test_overflow_protection();
+    test_large_hint();
     test_stress();
 
     printf("\nAll tests passed!\n");

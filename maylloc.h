@@ -1,14 +1,25 @@
-#ifndef MAYLLOC_H
-#define MAYLLOC_H
+#pragma once
 
 #include <stddef.h>
 
-typedef struct maylloc_id maylloc_id_t;
+typedef size_t maylloc_id_t;
 
-void maylloc_init(void);
-void maylloc_deinit(void);
-maylloc_id_t* maylloc_alloc(size_t size);
-void* maylloc_get(maylloc_id_t* id);
-void maylloc_free(maylloc_id_t* id);
+#define MAYLLOC_NULL_ID ((maylloc_id_t)0)
 
-#endif
+/* Create a new arena. size_hint is a rough guide for the reserved capacity;
+   the OS commits pages lazily so large values are cheap to request. */
+maylloc_id_t mayllocInit(size_t size_hint);
+
+/* Allocate count elements of elem_size bytes from the arena.
+   Returns NULL on failure (out of capacity or arithmetic overflow). */
+void* maylloc(maylloc_id_t id, size_t elem_size, size_t count);
+
+/* Typed allocation shorthand: MAYLLOC(arena, MyStruct, 8) -> MyStruct* */
+#define MAYLLOC(id, Type, count) ((Type*)maylloc((id), sizeof(Type), (count)))
+
+/* Invalidate all previous pointers and reset the arena for reuse.
+   No memory is released — subsequent allocations reuse the same pages. */
+void mayllocReset(maylloc_id_t id);
+
+/* Release the arena and all its memory. */
+void mayllocDrop(maylloc_id_t id);

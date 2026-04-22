@@ -2,12 +2,12 @@
 
 #include <sys/mman.h>
 
-#define MAYLLOC_ALIGN       16
-#define MAYLLOC_DEFAULT_CAP (64 * 1024)  /* 64 KiB */
+#define MAYLLOC_ALIGN 16
+#define MAYLLOC_DEFAULT_CAP (64 * 1024) /* 64 KiB */
 
 typedef struct {
-    size_t total;  /* full mmap size, stored for munmap */
-    size_t used;   /* bytes consumed in the data region */
+    size_t total; /* full mmap size, stored for munmap */
+    size_t used; /* bytes consumed in the data region */
 } maylloc_arena_t;
 
 static size_t align_up(size_t n)
@@ -40,13 +40,13 @@ maylloc_id_t mayllocInit(size_t size_hint)
     size_t total = header_size() + align_up(size_hint);
 
     maylloc_arena_t* a = mmap(NULL, total,
-                               PROT_READ | PROT_WRITE,
-                               MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (a == MAP_FAILED)
         return MAYLLOC_NULL_ID;
 
     a->total = total;
-    a->used  = 0;
+    a->used = 0;
     return (maylloc_id_t)a;
 }
 
@@ -58,9 +58,9 @@ void* maylloc(maylloc_id_t id, size_t elem_size, size_t count)
     /* Overflow guard for elem_size * count. */
     if (count > (size_t)-1 / elem_size)
         return NULL;
-    size_t bytes  = elem_size * count;
+    size_t bytes = elem_size * count;
     size_t needed = align_up(bytes);
-    if (needed < bytes)  /* align_up itself overflowed */
+    if (needed < bytes) /* align_up itself overflowed */
         return NULL;
 
     maylloc_arena_t* a = (maylloc_arena_t*)id;

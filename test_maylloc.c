@@ -1,12 +1,17 @@
 #include "maylloc.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 
-typedef struct { int x; int y; } Point;
-typedef struct { char buf[128]; } BigThing;
+typedef struct {
+    int x;
+    int y;
+} Point;
+typedef struct {
+    char buf[128];
+} BigThing;
 
 static void test_basic(void)
 {
@@ -27,23 +32,31 @@ static void test_multiple_types(void)
 {
     maylloc_id_t arena = mayllocInit(4096);
 
-    int*    ints   = MAYLLOC(arena, int,      16);
-    Point*  points = MAYLLOC(arena, Point,    8);
-    char*   buf    = MAYLLOC(arena, char,     256);
+    int* ints = MAYLLOC(arena, int, 16);
+    Point* points = MAYLLOC(arena, Point, 8);
+    char* buf = MAYLLOC(arena, char, 256);
 
     assert(ints && points && buf);
 
     /* pointers must not alias */
-    assert((void*)ints   != (void*)points);
+    assert((void*)ints != (void*)points);
     assert((void*)points != (void*)buf);
 
-    for (int i = 0; i < 16; i++)  ints[i]    = i;
-    for (int i = 0; i < 8;  i++) { points[i].x = i; points[i].y = -i; }
+    for (int i = 0; i < 16; i++)
+        ints[i] = i;
+    for (int i = 0; i < 8; i++) {
+        points[i].x = i;
+        points[i].y = -i;
+    }
     memset(buf, 0xAB, 256);
 
-    for (int i = 0; i < 16; i++)  assert(ints[i]    == i);
-    for (int i = 0; i < 8;  i++) { assert(points[i].x == i && points[i].y == -i); }
-    for (int i = 0; i < 256; i++) assert((unsigned char)buf[i] == 0xAB);
+    for (int i = 0; i < 16; i++)
+        assert(ints[i] == i);
+    for (int i = 0; i < 8; i++) {
+        assert(points[i].x == i && points[i].y == -i);
+    }
+    for (int i = 0; i < 256; i++)
+        assert((unsigned char)buf[i] == 0xAB);
 
     mayllocDrop(arena);
     printf("PASS: test_multiple_types\n");
@@ -71,8 +84,8 @@ static void test_reset_reuses_memory(void)
 static void test_null_id(void)
 {
     assert(maylloc(MAYLLOC_NULL_ID, sizeof(int), 1) == NULL);
-    mayllocReset(MAYLLOC_NULL_ID);  /* must not crash */
-    mayllocDrop(MAYLLOC_NULL_ID);   /* must not crash */
+    mayllocReset(MAYLLOC_NULL_ID); /* must not crash */
+    mayllocDrop(MAYLLOC_NULL_ID); /* must not crash */
     printf("PASS: test_null_id\n");
 }
 
@@ -126,8 +139,10 @@ static void test_stress(void)
     for (int round = 0; round < 10; round++) {
         int* nums = MAYLLOC(arena, int, 1000);
         assert(nums != NULL);
-        for (int i = 0; i < 1000; i++) nums[i] = i * round;
-        for (int i = 0; i < 1000; i++) assert(nums[i] == i * round);
+        for (int i = 0; i < 1000; i++)
+            nums[i] = i * round;
+        for (int i = 0; i < 1000; i++)
+            assert(nums[i] == i * round);
         mayllocReset(arena);
     }
 

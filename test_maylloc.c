@@ -132,6 +132,47 @@ static void test_large_hint(void)
     printf("PASS: test_large_hint\n");
 }
 
+static void test_once(void)
+{
+    maylloc_id_t arena = mayllocInit(4096);
+
+    Point* p = MAYLLOCONCE(arena, Point);
+    assert(p != NULL);
+    p->x = 7;
+    p->y = 42;
+    assert(p->x == 7 && p->y == 42);
+
+    mayllocDrop(arena);
+    printf("PASS: test_once\n");
+}
+
+static void test_zero_init(void)
+{
+    maylloc_id_t arena = mayllocInit(4096);
+
+    /* Dirty the memory with a non-zero pattern, then reset. */
+    int* dirty = MAYLLOC(arena, int, 8);
+    assert(dirty != NULL);
+    for (int i = 0; i < 8; i++)
+        dirty[i] = 0xDEAD;
+    mayllocReset(arena);
+
+    /* Z variants must return zeroed memory even after reset. */
+    int* clean = MAYLLOCZ(arena, int, 8);
+    assert(clean != NULL);
+    for (int i = 0; i < 8; i++)
+        assert(clean[i] == 0);
+
+    mayllocReset(arena);
+
+    Point* p = MAYLLOCONCEZ(arena, Point);
+    assert(p != NULL);
+    assert(p->x == 0 && p->y == 0);
+
+    mayllocDrop(arena);
+    printf("PASS: test_zero_init\n");
+}
+
 static void test_stress(void)
 {
     maylloc_id_t arena = mayllocInit(1024 * 1024);
@@ -159,6 +200,8 @@ int main(void)
     test_capacity_exhausted();
     test_overflow_protection();
     test_large_hint();
+    test_once();
+    test_zero_init();
     test_stress();
 
     printf("\nAll tests passed!\n");

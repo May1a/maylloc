@@ -1,5 +1,6 @@
 #include "maylloc.h"
 
+#include <string.h>
 #include <sys/mman.h>
 
 #define MAYLLOC_ALIGN 16
@@ -72,6 +73,24 @@ void* maylloc(maylloc_id_t id, size_t elem_size, size_t count)
     void* ptr = arena_data(a) + a->used;
     a->used += needed;
     return ptr;
+}
+
+void* mayllocOnce(maylloc_id_t id, size_t elem_size)
+{
+    return maylloc(id, elem_size, 1);
+}
+
+void* mayllocZ(maylloc_id_t id, size_t elem_size, size_t count)
+{
+    void* ptr = maylloc(id, elem_size, count);
+    if (ptr)
+        memset(ptr, 0, elem_size * count);
+    return ptr;
+}
+
+void* mayllocOnceZ(maylloc_id_t id, size_t elem_size)
+{
+    return mayllocZ(id, elem_size, 1);
 }
 
 void mayllocReset(maylloc_id_t id)
